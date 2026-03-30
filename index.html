@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Humanitarian Response Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        /* General Styling */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #f4f6f9; color: #333; }
+        header { background: #2c3e50; color: white; padding: 15px 20px; text-align: center; margin-bottom: 20px;}
+        header h1 { margin: 0; font-size: 24px; }
+        
+        .dashboard-container { display: flex; padding: 0 20px 20px 20px; gap: 20px; }
+        
+        /* Sidebar / Filters */
+        .sidebar { width: 250px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); height: fit-content; }
+        .sidebar h2 { font-size: 18px; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        .filters label { display: block; font-weight: bold; margin-top: 15px; margin-bottom: 5px; font-size: 14px; }
+        .filters select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; gap: 20px; overflow: hidden; }
+        
+        /* KPIs */
+        .kpi-container { display: flex; gap: 15px; justify-content: space-between; flex-wrap: wrap; }
+        .kpi-card { background: white; padding: 15px; flex: 1; min-width: 150px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-top: 4px solid #3498db;}
+        .kpi-card h3 { margin: 0 0 10px 0; font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px;}
+        .kpi-card p { margin: 0; font-size: 22px; font-weight: bold; color: #2c3e50; }
+        
+        /* Charts Grid */
+        .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .chart-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); position: relative; }
+        .chart-card h3 { margin-top: 0; font-size: 16px; text-align: center; color: #333; margin-bottom: 15px;}
+        
+        /* Table */
+        .table-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; font-size: 13px; }
+        th { background: #f8f9fa; cursor: pointer; color: #2c3e50; position: sticky; top: 0;}
+        th:hover { background: #e9ecef; }
+        
+        /* Tooltip and interactions */
+        .tooltip { position: absolute; background: rgba(30, 40, 50, 0.9); color: white; padding: 10px 14px; border-radius: 6px; font-size: 13px; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 100; box-shadow: 0 4px 8px rgba(0,0,0,0.2);}
+        .hover-highlight { opacity: 0.6; stroke: #333; stroke-width: 1.5px; cursor: pointer;}
+        
+        svg { font-family: 'Segoe UI', sans-serif; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Humanitarian Response Dashboard</h1>
+    </header>
+
+    <div class="dashboard-container">
+        <div class="sidebar">
+            <h2>Data Filters</h2>
+            <div class="filters">
+                <label for="filter-region">Region</label>
+                <select id="filter-region" class="filter-select"></select>
+
+                <label for="filter-country">Country</label>
+                <select id="filter-country" class="filter-select"></select>
+
+                <label for="filter-sector">Sector</label>
+                <select id="filter-sector" class="filter-select"></select>
+
+                <label for="filter-partner">Organization (Partner)</label>
+                <select id="filter-partner" class="filter-select"></select>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="kpi-container">
+                <div class="kpi-card" style="border-top-color: #3498db;">
+                    <h3>People Targeted</h3>
+                    <p id="kpi-target">0</p>
+                </div>
+                <div class="kpi-card" style="border-top-color: #2ecc71;">
+                    <h3>People Reached</h3>
+                    <p id="kpi-reached">0</p>
+                </div>
+                <div class="kpi-card" style="border-top-color: #f39c12;">
+                    <h3>Funding Required</h3>
+                    <p id="kpi-required">$0</p>
+                </div>
+                <div class="kpi-card" style="border-top-color: #9b59b6;">
+                    <h3>Funding Received</h3>
+                    <p id="kpi-received">$0</p>
+                </div>
+                <div class="kpi-card" style="border-top-color: #e74c3c;">
+                    <h3>Funding Gap</h3>
+                    <p id="kpi-gap">0%</p>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Targeted vs Reached by Sector</h3>
+                    <div id="bar-chart"></div>
+                </div>
+                <div class="chart-card">
+                    <h3>Monthly Funding Received</h3>
+                    <div id="line-chart"></div>
+                </div>
+                <div class="chart-card">
+                    <h3>Top 10 Locations by Funding Gap</h3>
+                    <div id="rank-chart"></div>
+                </div>
+                <div class="chart-card">
+                    <h3>Funding Received by Sector</h3>
+                    <div id="pie-chart"></div>
+                </div>
+            </div>
+
+            <div class="table-card">
+                <h3>Filtered Records (Top 15)</h3>
+                <table id="data-table">
+                    <thead>
+                        <tr>
+                            <th onclick="sortTable('date')">Date ↕</th>
+                            <th onclick="sortTable('country')">Country ↕</th>
+                            <th onclick="sortTable('site')">Location (Site) ↕</th>
+                            <th onclick="sortTable('sector')">Sector ↕</th>
+                            <th onclick="sortTable('partner')">Partner ↕</th>
+                            <th onclick="sortTable('funding_gap')">Funding Gap ($) ↕</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let globalData = [];
+        let filteredData = [];
+        const tooltip = d3.select("body").append("div").attr("class", "tooltip");
+        
+        // Table sorting state
+        let currentSortCol = 'date';
+        let sortAscending = false;
+
+        // Load Data
+        d3.csv("humanitarian_response_dataset.csv").then(data => {
+            // Preprocess Data
+            data.forEach(d => {
+                d.date = new Date(d.date);
+                d.people_in_need = +d.people_in_need || 0;
+                d.people_reached = +d.people_reached || 0;
+                d.funding_required_usd = +d.funding_required_usd || 0;
+                d.funding_received_usd = +d.funding_received_usd || 0;
+                d.funding_gap = Math.max(0, d.funding_required_usd - d.funding_received_usd);
+            });
+
+            globalData = data;
+            filteredData = data;
+
+            // Populate Dropdowns
+            populateFilters(data);
+
+            // Initial Draw
+            updateDashboard();
+        }).catch(error => console.error("Error loading CSV:", error));
+
+        function populateFilters(data) {
+            const getUnique = col => ["All", ...new Set(data.map(d => d[col]).filter(Boolean))].sort();
+            
+            const dropdowns = {
+                "#filter-region": getUnique("state_region"),
+                "#filter-country": getUnique("country"),
+                "#filter-sector": getUnique("sector"),
+                "#filter-partner": getUnique("partner")
+            };
+
+            Object.entries(dropdowns).forEach(([selector, options]) => {
+                d3.select(selector).selectAll("option")
+                  .data(options).enter()
+                  .append("option").text(d => d).attr("value", d => d);
+            });
+
+            // Add Event Listeners
+            d3.selectAll(".filter-select").on("change", applyFilters);
+        }
+
+        function applyFilters() {
+            const region = d3.select("#filter-region").node().value;
+            const country = d3.select("#filter-country").node().value;
+            const sector = d3.select("#filter-sector").node().value;
+            const partner = d3.select("#filter-partner").node().value;
+
+            filteredData = globalData.filter(d => {
+                return (region === "All" || d.state_region === region) &&
+                       (country === "All" || d.country === country) &&
+                       (sector === "All" || d.sector === sector) &&
+                       (partner === "All" || d.partner === partner);
+            });
+
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            updateKPIs(filteredData);
+            drawGroupedBarChart(filteredData);
+            drawLineChart(filteredData);
+            drawRankChart(filteredData);
+            drawPieChart(filteredData);
+            renderTable(filteredData);
+        }
+
+        // --- 1. KPI Update ---
+        function updateKPIs(data) {
+            const req = d3.sum(data, d => d.funding_required_usd);
+            const rec = d3.sum(data, d => d.funding_received_usd);
+            const gapPct = req > 0 ? ((req - rec) / req) * 100 : 0;
+
+            d3.select("#kpi-target").text(d3.format(",.0f")(d3.sum(data, d => d.people_in_need)));
+            d3.select("#kpi-reached").text(d3.format(",.0f")(d3.sum(data, d => d.people_reached)));
+            d3.select("#kpi-required").text(d3.format("$,.0f")(req));
+            d3.select("#kpi-received").text(d3.format("$,.0f")(rec));
+            d3.select("#kpi-gap").text(d3.format(".1f")(gapPct) + "%");
+        }
+
+        // --- 2. Grouped Bar Chart ---
+        function drawGroupedBarChart(data) {
+            const container = d3.select("#bar-chart");
+            container.selectAll("*").remove();
+            
+            if(data.length === 0) return;
+
+            const margin = {top: 20, right: 20, bottom: 40, left: 50},
+                  width = container.node().getBoundingClientRect().width - margin.left - margin.right,
+                  height = 300 - margin.top - margin.bottom;
+
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Aggregate Data
+            const sectorRollup = Array.from(d3.rollup(data, 
+                v => ({ Targeted: d3.sum(v, d => d.people_in_need), Reached: d3.sum(v, d => d.people_reached) }),
+                d => d.sector
+            )).map(([sector, vals]) => ({ sector, ...vals }));
+
+            const subgroups = ["Targeted", "Reached"];
+            const groups = sectorRollup.map(d => d.sector);
+
+            const x = d3.scaleBand().domain(groups).range([0, width]).padding([0.2]);
+            const xSubgroup = d3.scaleBand().domain(subgroups).range([0, x.bandwidth()]).padding([0.05]);
+            const y = d3.scaleLinear().domain([0, d3.max(sectorRollup, d => Math.max(d.Targeted, d.Reached))]).nice().range([height, 0]);
+            const color = d3.scaleOrdinal().domain(subgroups).range(['#3498db', '#2ecc71']);
+
+            svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x));
+            svg.append("g").call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s")));
+
+            const slice = svg.selectAll(".slice")
+                .data(sectorRollup).enter().append("g")
+                .attr("transform", d => `translate(${x(d.sector)},0)`);
+
+            slice.selectAll("rect")
+                .data(d => subgroups.map(key => ({key: key, value: d[key], sector: d.sector})))
+                .enter().append("rect")
+                .attr("x", d => xSubgroup(d.key))
+                .attr("y", d => y(d.value))
+                .attr("width", xSubgroup.bandwidth())
+                .attr("height", d => height - y(d.value))
+                .attr("fill", d => color(d.key))
+                .on("mouseover", function(event, d) {
+                    d3.select(this).classed("hover-highlight", true);
+                    tooltip.style("opacity", 1)
+                           .html(`<strong>${d.sector} - ${d.key}</strong><br/>${d3.format(",.0f")(d.value)} People`)
+                           .style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).classed("hover-highlight", false);
+                    tooltip.style("opacity", 0);
+                });
+                
+            // Legend
+            const legend = svg.append("g").attr("transform", `translate(${width - 100}, 0)`);
+            subgroups.forEach((key, i) => {
+                const legendRow = legend.append("g").attr("transform", `translate(0, ${i * 20})`);
+                legendRow.append("rect").attr("width", 10).attr("height", 10).attr("fill", color(key));
+                legendRow.append("text").attr("x", 15).attr("y", 10).text(key).style("font-size", "12px").attr("alignment-baseline","middle");
+            });
+        }
+
+        // --- 3. Time Series Chart ---
+        function drawLineChart(data) {
+            const container = d3.select("#line-chart");
+            container.selectAll("*").remove();
+            if(data.length === 0) return;
+
+            const margin = {top: 20, right: 30, bottom: 40, left: 60},
+                  width = container.node().getBoundingClientRect().width - margin.left - margin.right,
+                  height = 300 - margin.top - margin.bottom;
+
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Rollup by Month
+            const timeData = Array.from(d3.rollup(data,
+                v => d3.sum(v, d => d.funding_received_usd),
+                d => d3.timeMonth.floor(d.date)
+            )).map(([date, val]) => ({date, val})).sort((a,b) => a.date - b.date);
+
+            const x = d3.scaleTime().domain(d3.extent(timeData, d => d.date)).range([0, width]);
+            const y = d3.scaleLinear().domain([0, d3.max(timeData, d => d.val)]).nice().range([height, 0]);
+
+            svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).tickFormat(d3.timeFormat("%b '%y")));
+            svg.append("g").call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("~s")));
+
+            const line = d3.line().x(d => x(d.date)).y(d => y(d.val)).curve(d3.curveMonotoneX);
+
+            svg.append("path")
+                .datum(timeData)
+                .attr("fill", "none")
+                .attr("stroke", "#9b59b6")
+                .attr("stroke-width", 3)
+                .attr("d", line);
+
+            // Points for hover
+            svg.selectAll(".dot")
+                .data(timeData).enter().append("circle")
+                .attr("cx", d => x(d.date)).attr("cy", d => y(d.val)).attr("r", 5).attr("fill", "#8e44ad")
+                .on("mouseover", function(event, d) {
+                    d3.select(this).attr("r", 8).classed("hover-highlight", true);
+                    tooltip.style("opacity", 1)
+                           .html(`<strong>${d3.timeFormat("%b %Y")(d.date)}</strong><br/>Rec: ${d3.format("$,.0f")(d.val)}`)
+                           .style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).attr("r", 5).classed("hover-highlight", false);
+                    tooltip.style("opacity", 0);
+                });
+        }
+
+        // --- 4. Ranking Chart ---
+        function drawRankChart(data) {
+            const container = d3.select("#rank-chart");
+            container.selectAll("*").remove();
+            if(data.length === 0) return;
+
+            const margin = {top: 10, right: 30, bottom: 40, left: 120},
+                  width = container.node().getBoundingClientRect().width - margin.left - margin.right,
+                  height = 300 - margin.top - margin.bottom;
+
+            const svg = container.append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // Rollup Gap by Site
+            let gapData = Array.from(d3.rollup(data,
+                v => d3.sum(v, d => d.funding_gap),
+                d => d.site
+            )).map(([site, gap]) => ({site, gap}))
+              .sort((a,b) => b.gap - a.gap)
+              .slice(0, 10);
+
+            const x = d3.scaleLinear().domain([0, d3.max(gapData, d => d.gap)]).range([0, width]);
+            const y = d3.scaleBand().domain(gapData.map(d => d.site)).range([0, height]).padding(0.2);
+
+            svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).ticks(4).tickFormat(d3.format("~s")));
+            svg.append("g").call(d3.axisLeft(y));
+
+            svg.selectAll("rect")
+                .data(gapData).enter().append("rect")
+                .attr("x", 0).attr("y", d => y(d.site))
+                .attr("width", d => x(d.gap)).attr("height", y.bandwidth())
+                .attr("fill", "#e74c3c")
+                .on("mouseover", function(event, d) {
+                    d3.select(this).classed("hover-highlight", true);
+                    tooltip.style("opacity", 1)
+                           .html(`<strong>${d.site}</strong><br/>Gap: ${d3.format("$,.0f")(d.gap)}`)
+                           .style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).classed("hover-highlight", false);
+                    tooltip.style("opacity", 0);
+                });
+        }
+
+        // --- 5. Pie Chart ---
+        function drawPieChart(data) {
+            const container = d3.select("#pie-chart");
+            container.selectAll("*").remove();
+            if(data.length === 0) return;
+
+            const width = container.node().getBoundingClientRect().width, height = 300;
+            const radius = Math.min(width, height) / 2 - 20;
+
+            const svg = container.append("svg")
+                .attr("width", width)
+                .attr("height", height)
+                .append("g")
+                .attr("transform", `translate(${width/2},${height/2})`);
+
+            const pieData = Array.from(d3.rollup(data, v => d3.sum(v, d => d.funding_received_usd), d => d.sector))
+                                 .map(([sector, val]) => ({sector, val}))
+                                 .filter(d => d.val > 0);
+
+            const color = d3.scaleOrdinal(d3.schemeSet2);
+            const pie = d3.pie().value(d => d.val).sort(null);
+            const arc = d3.arc().innerRadius(radius * 0.5).outerRadius(radius); // Donut
+
+            svg.selectAll("path")
+                .data(pie(pieData)).enter().append("path")
+                .attr("d", arc)
+                .attr("fill", d => color(d.data.sector))
+                .on("mouseover", function(event, d) {
+                    d3.select(this).classed("hover-highlight", true);
+                    tooltip.style("opacity", 1)
+                           .html(`<strong>${d.data.sector}</strong><br/>Rec: ${d3.format("$,.0f")(d.data.val)}`)
+                           .style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function() {
+                    d3.select(this).classed("hover-highlight", false);
+                    tooltip.style("opacity", 0);
+                });
+        }
+
+        // --- 6. Data Table ---
+        function renderTable(data) {
+            const tbody = d3.select("#data-table tbody");
+            tbody.selectAll("*").remove();
+
+            // Apply Sort
+            let sorted = [...data].sort((a, b) => {
+                let valA = a[currentSortCol], valB = b[currentSortCol];
+                if(valA < valB) return sortAscending ? -1 : 1;
+                if(valA > valB) return sortAscending ? 1 : -1;
+                return 0;
+            });
+
+            // Limit to 15 rows
+            const tableData = sorted.slice(0, 15);
+
+            const rows = tbody.selectAll("tr").data(tableData).enter().append("tr");
+            rows.append("td").text(d => d3.timeFormat("%Y-%m-%d")(d.date));
+            rows.append("td").text(d => d.country);
+            rows.append("td").text(d => d.site);
+            rows.append("td").text(d => d.sector);
+            rows.append("td").text(d => d.partner);
+            rows.append("td").text(d => d3.format("$,.0f")(d.funding_gap));
+        }
+
+        function sortTable(column) {
+            if(currentSortCol === column) {
+                sortAscending = !sortAscending;
+            } else {
+                currentSortCol = column;
+                sortAscending = true;
+            }
+            renderTable(filteredData);
+        }
+    </script>
+</body>
+</html>
